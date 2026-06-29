@@ -3,101 +3,7 @@ import type { Monaco } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
 import Editor from '@monaco-editor/react'
 import { useProjectStore } from '../../store/projectStore'
-
-const PLANTUML_KEYWORDS = [
-  '@startuml',
-  '@enduml',
-  '@startmindmap',
-  '@endmindmap',
-  'participant',
-  'actor',
-  'database',
-  'entity',
-  'class',
-  'interface',
-  'enum',
-  'package',
-  'namespace',
-  'state',
-  'note',
-  'box',
-  'end box',
-  'alt',
-  'else',
-  'end',
-  'par',
-  'loop',
-  'opt',
-  'break',
-  'critical',
-  'group',
-  'title',
-  'skinparam',
-  'autonumber',
-  'hide',
-  'show',
-  'left',
-  'right',
-  'of',
-  'over',
-  'as',
-  '!include',
-  '!define',
-  '!ifdef',
-  '!endif',
-]
-
-function registerPlantUmlLanguage(monaco: Monaco) {
-  const id = 'plantuml'
-
-  if (monaco.languages.getLanguages().some((l: { id: string }) => l.id === id)) {
-    return
-  }
-
-  monaco.languages.register({ id })
-
-  monaco.languages.setMonarchTokensProvider(id, {
-    tokenizer: {
-      root: [
-        [/'.*$/, 'comment'],
-        [/".*"/, 'string'],
-        [
-          new RegExp(`\\b(${PLANTUML_KEYWORDS.join('|')})\\b`),
-          'keyword',
-        ],
-        [/[{}|<>o\-*#]+/, 'operator'],
-        [/[a-zA-Z_][\w]*/, 'identifier'],
-      ],
-    },
-  })
-
-  monaco.editor.defineTheme('plantuml-dark', {
-    base: 'vs-dark',
-    inherit: true,
-    rules: [
-      { token: 'keyword', foreground: '3ecf8e', fontStyle: 'bold' },
-      { token: 'comment', foreground: '6a7f9a', fontStyle: 'italic' },
-      { token: 'string', foreground: 'fbbf24' },
-      { token: 'operator', foreground: '94a3b8' },
-    ],
-    colors: {
-      'editor.background': '#1a2332',
-    },
-  })
-
-  monaco.editor.defineTheme('plantuml-light', {
-    base: 'vs',
-    inherit: true,
-    rules: [
-      { token: 'keyword', foreground: '059669', fontStyle: 'bold' },
-      { token: 'comment', foreground: '94a3b8', fontStyle: 'italic' },
-      { token: 'string', foreground: 'd97706' },
-    ],
-    colors: {
-      'editor.background': '#ffffff',
-    },
-  })
-}
+import { getMonacoTheme, registerPlantUmlLanguage } from '../../lib/monacoPlantuml'
 
 export function CodeEditor() {
   const activeFile = useProjectStore((s) => s.activeFile)
@@ -108,19 +14,28 @@ export function CodeEditor() {
   const clearPendingInsert = useProjectStore((s) => s.clearPendingInsert)
 
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
+  const monacoRef = useRef<Monaco | null>(null)
 
   const content = files.find((f) => f.path === activeFile)?.content ?? ''
 
+  const handleBeforeMount = useCallback((monaco: Monaco) => {
+    monacoRef.current = monaco
+    registerPlantUmlLanguage(monaco)
+    monaco.editor.setTheme(getMonacoTheme(theme))
+  }, [theme])
+
   const handleMount = useCallback(
-    (ed: editor.IStandaloneCodeEditor, monaco: Monaco) => {
+    (ed: editor.IStandaloneCodeEditor) => {
       editorRef.current = ed
-      registerPlantUmlLanguage(monaco)
-      monaco.editor.setTheme(
-        theme === 'dark' ? 'plantuml-dark' : 'plantuml-light',
-      )
     },
-    [theme],
+    [],
   )
+
+  useEffect(() => {
+    if (monacoRef.current) {
+      monacoRef.current.editor.setTheme(getMonacoTheme(theme))
+    }
+  }, [theme])
 
   useEffect(() => {
     if (!pendingInsert || !editorRef.current) return
@@ -130,12 +45,13 @@ export function CodeEditor() {
     const model = ed.getModel()
     if (!model || !selection) return
 
-    const op = {
-      range: selection,
-      text: pendingInsert,
-      forceMoveMarkers: true,
-    }
-    ed.executeEdits('snippet', [op])
+    ed.executeEdits('snippet', [
+      {
+        range: selection,
+        text: pendingInsert,
+        forceMoveMarkers: true,
+      },
+    ])
     ed.focus()
     clearPendingInsert()
   }, [pendingInsert, clearPendingInsert])
@@ -146,8 +62,14 @@ export function CodeEditor() {
         key={activeFile}
         height="100%"
         language="plantuml"
-        theme={theme === 'dark' ? 'plantuml-dark' : 'plantuml-light'}
+        theme={getMonacoTheme(theme)}
         value={content}
+        loading={
+          <div className="flex h-full items-center justify-center text-sm text-[var(--text-secondary)]">
+            Загрузка редактора…
+          </div>
+        }
+        beforeMount={handleBeforeMount}
         onChange={(value) => {
           if (value !== undefined) {
             updateFileContent(activeFile, value)

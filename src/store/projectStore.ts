@@ -168,12 +168,22 @@ export const useProjectStore = create<ProjectState>()(
     }),
     {
       name: 'plantuml-studio-project',
+      version: 1,
       partialize: (state) => ({
         files: state.files,
         activeFile: state.activeFile,
         theme: state.theme,
         darkDiagram: state.darkDiagram,
       }),
+      onRehydrateStorage: () => (state, error) => {
+        if (error) {
+          console.warn('Failed to restore saved project:', error)
+          localStorage.removeItem('plantuml-studio-project')
+        } else if (state && (!state.files || state.files.length === 0)) {
+          state.files = createDefaultFiles()
+          state.activeFile = DEFAULT_MAIN
+        }
+      },
     },
   ),
 )

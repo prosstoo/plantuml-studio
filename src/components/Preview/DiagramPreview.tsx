@@ -15,10 +15,14 @@ export function DiagramPreview() {
   const renderTimeMs = useProjectStore((s) => s.renderTimeMs)
   const setSvg = useProjectStore((s) => s.setSvg)
   const setRenderStatus = useProjectStore((s) => s.setRenderStatus)
-  const getFilesMap = useProjectStore((s) => s.getFilesMap)
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const transformRef = useRef<{ resetTransform: () => void; zoomIn: () => void; zoomOut: () => void } | null>(null)
+  const renderIdRef = useRef(0)
+  const zoomRef = useRef({
+    zoomIn: () => {},
+    zoomOut: () => {},
+    resetTransform: () => {},
+  })
 
   const activeContent =
     files.find((f) => f.path === activeFile)?.content ?? ''
@@ -26,19 +30,32 @@ export function DiagramPreview() {
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current)
 
+    const renderId = ++renderIdRef.current
+
     timerRef.current = setTimeout(async () => {
       setRenderStatus('loading')
       const start = performance.now()
 
       try {
-        const filesMap = getFilesMap()
+        const filesMap = new Map<string, string>()
+        for (const f of files) {
+          filesMap.set(f.path, f.content)
+          const basename = f.path.split('/').pop()
+          if (basename) filesMap.set(basename, f.content)
+        }
+
         const resolved = resolveIncludes(activeContent, filesMap)
         const wrapped = ensurePlantUmlWrapper(resolved)
         const result = await renderToSvg(wrapped, { dark: darkDiagram })
+
+        if (renderId !== renderIdRef.current) return
+
         const elapsed = Math.round(performance.now() - start)
         setSvg(result)
         setRenderStatus('success', null, elapsed)
       } catch (err) {
+        if (renderId !== renderIdRef.current) return
+
         const elapsed = Math.round(performance.now() - start)
         const message =
           err instanceof Error ? err.message : 'Неизвестная ошибка рендеринга'
@@ -50,15 +67,7 @@ export function DiagramPreview() {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
     }
-  }, [
-    activeContent,
-    files,
-    darkDiagram,
-    debounceMs,
-    getFilesMap,
-    setSvg,
-    setRenderStatus,
-  ])
+  }, [activeContent, files, darkDiagram, debounceMs, setSvg, setRenderStatus])
 
   const statusText = () => {
     if (renderStatus === 'loading') return 'Рендеринг…'
@@ -78,7 +87,7 @@ export function DiagramPreview() {
           <button
             type="button"
             className="preview-btn"
-            onClick={() => transformRef.current?.zoomOut()}
+            onClick={() => zoomRef.current.zoomOut()}
             title="Уменьшить"
           >
             −
@@ -86,7 +95,7 @@ export function DiagramPreview() {
           <button
             type="button"
             className="preview-btn"
-            onClick={() => transformRef.current?.resetTransform()}
+            onClick={() => zoomRef.current.resetTransform()}
             title="По размеру"
           >
             Fit
@@ -94,7 +103,7 @@ export function DiagramPreview() {
           <button
             type="button"
             className="preview-btn"
-            onClick={() => transformRef.current?.zoomIn()}
+            onClick={() => zoomRef.current.zoomIn()}
             title="Увеличить"
           >
             +
@@ -129,7 +138,7 @@ export function DiagramPreview() {
             wheel={{ step: 0.1 }}
           >
             {({ zoomIn, zoomOut, resetTransform }) => {
-              transformRef.current = { zoomIn, zoomOut, resetTransform }
+              zoomRef.current = { zoomIn, zoomOut, resetTransform }
               return (
                 <TransformComponent
                   wrapperClass="!w-full !h-full"

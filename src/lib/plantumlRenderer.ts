@@ -11,10 +11,19 @@ function loadEngine() {
   return enginePromise
 }
 
+function ensureVizLoaded(): void {
+  if (typeof window !== 'undefined' && !(window as Window & { Viz?: unknown }).Viz) {
+    throw new Error(
+      'Graphviz не загружен. Проверьте, что viz-global.js доступен.',
+    )
+  }
+}
+
 export async function renderToSvg(
   source: string,
   options: RenderOptions = {},
 ): Promise<string> {
+  ensureVizLoaded()
   const { renderToString } = await loadEngine()
   const lines = source.split('\n')
 
