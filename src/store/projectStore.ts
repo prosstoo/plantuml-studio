@@ -1,6 +1,11 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { normalizePath } from '../lib/includeResolver'
+import { ensureBundledIncludes } from '../lib/ensureProjectIncludes'
+import type { ColorPreset } from '../lib/colorPresets'
+import { DEFAULT_COLOR_PRESETS } from '../lib/colorPresets'
+import type { DiagramStylePreset } from '../lib/diagramThemes'
+import type { EditorErrorLine } from '../lib/parsePlantUmlError'
 
 export interface ProjectFile {
   path: string
@@ -9,6 +14,7 @@ export interface ProjectFile {
 
 export type Theme = 'dark' | 'light'
 export type RenderStatus = 'idle' | 'loading' | 'success' | 'error'
+export type SidebarTab = 'snippets' | 'links' | 'colors'
 
 const DEFAULT_MAIN = `main.puml`
 
@@ -25,11 +31,18 @@ interface ProjectState {
   activeFile: string
   theme: Theme
   darkDiagram: boolean
+  diagramStylePreset: DiagramStylePreset
+  customColorPresets: ColorPreset[]
+  sidebarTab: SidebarTab
+  autoRender: boolean
+  renderVersion: number
   svg: string | null
   renderStatus: RenderStatus
   renderError: string | null
+  renderErrorLines: EditorErrorLine[]
   renderTimeMs: number | null
   debounceMs: number
+  pendingInsert: string | null
 
   setActiveFile: (path: string) => void
   updateFileContent: (path: string, content: string) => void
@@ -40,14 +53,25 @@ interface ProjectState {
   clearProject: () => void
   toggleTheme: () => void
   setDarkDiagram: (dark: boolean) => void
+  setDiagramStylePreset: (preset: DiagramStylePreset) => void
+  setCustomColorPresets: (presets: ColorPreset[]) => void
+  addCustomColorPreset: (preset: ColorPreset) => void
+  setSidebarTab: (tab: SidebarTab) => void
+  setAutoRender: (auto: boolean) => void
+  triggerRender: () => void
   setSvg: (svg: string | null) => void
-  setRenderStatus: (status: RenderStatus, error?: string | null, timeMs?: number | null) => void
+  setRenderStatus: (
+    status: RenderStatus,
+    error?: string | null,
+    timeMs?: number | null,
+    errorLines?: EditorErrorLine[],
+  ) => void
   getActiveContent: () => string
   getFilesMap: () => Map<string, string>
-  insertAtCursor: (code: string) => void
-  pendingInsert: string | null
-  clearPendingInsert: () => void
   requestInsert: (code: string) => void
+  clearPendingInsert: () => void
+  appendToActiveFile: (code: string) => void
+  replaceActiveFileContent: (content: string) => void
 }
 
 function createDefaultFiles(): ProjectFile[] {
@@ -61,9 +85,15 @@ export const useProjectStore = create<ProjectState>()(
       activeFile: DEFAULT_MAIN,
       theme: 'dark',
       darkDiagram: false,
+      diagramStylePreset: 'espц',
+      customColorPresets: [],
+      sidebarTab: 'snippets',
+      autoRender: true,
+      renderVersion: 0,
       svg: null,
       renderStatus: 'idle',
       renderError: null,
+      renderErrorLines: [],
       renderTimeMs: null,
       debounceMs: 500,
       pendingInsert: null,
@@ -114,15 +144,20 @@ export const useProjectStore = create<ProjectState>()(
 
       loadProject: (files) => {
         if (files.length === 0) return
+        const normalized = files.map((f) => ({
+          path: normalizePath(f.path),
+          content: f.content,
+        }))
+        const withIncludes = ensureBundledIncludes(normalized)
+        const main =
+          withIncludes.find((f) => /@startuml/i.test(f.content)) ?? withIncludes[0]
         set({
-          files: files.map((f) => ({
-            path: normalizePath(f.path),
-            content: f.content,
-          })),
-          activeFile: normalizePath(files[0].path),
+          files: withIncludes,
+          activeFile: main.path,
           svg: null,
           renderStatus: 'idle',
           renderError: null,
+          renderErrorLines: [],
         })
       },
 
@@ -133,6 +168,7 @@ export const useProjectStore = create<ProjectState>()(
           svg: null,
           renderStatus: 'idle',
           renderError: null,
+          renderErrorLines: [],
         }),
 
       toggleTheme: () =>
@@ -142,10 +178,31 @@ export const useProjectStore = create<ProjectState>()(
 
       setDarkDiagram: (dark) => set({ darkDiagram: dark }),
 
+      setDiagramStylePreset: (preset) => set({ diagramStylePreset: preset }),
+
+      setCustomColorPresets: (presets) => set({ customColorPresets: presets }),
+
+      addCustomColorPreset: (preset) =>
+        set((state) => ({
+          customColorPresets: [...state.customColorPresets, preset],
+        })),
+
+      setSidebarTab: (tab) => set({ sidebarTab: tab }),
+
+      setAutoRender: (auto) => set({ autoRender: auto }),
+
+      triggerRender: () =>
+        set((state) => ({ renderVersion: state.renderVersion + 1 })),
+
       setSvg: (svg) => set({ svg }),
 
-      setRenderStatus: (status, error = null, timeMs = null) =>
-        set({ renderStatus: status, renderError: error, renderTimeMs: timeMs }),
+      setRenderStatus: (status, error = null, timeMs = null, errorLines = []) =>
+        set({
+          renderStatus: status,
+          renderError: error,
+          renderTimeMs: timeMs,
+          renderErrorLines: status === 'error' ? errorLines : [],
+        }),
 
       getActiveContent: () => {
         const { files, activeFile } = get()
@@ -162,18 +219,36 @@ export const useProjectStore = create<ProjectState>()(
         return map
       },
 
-      insertAtCursor: () => {},
       requestInsert: (code) => set({ pendingInsert: code }),
       clearPendingInsert: () => set({ pendingInsert: null }),
+
+      appendToActiveFile: (code) => {
+        const { files, activeFile } = get()
+        set({
+          files: files.map((f) =>
+            f.path === activeFile
+              ? { ...f, content: f.content.trimEnd() + '\n' + code }
+              : f,
+          ),
+        })
+      },
+
+      replaceActiveFileContent: (content) => {
+        const { activeFile } = get()
+        get().updateFileContent(activeFile, content)
+      },
     }),
     {
       name: 'plantuml-studio-project',
-      version: 1,
+      version: 2,
       partialize: (state) => ({
         files: state.files,
         activeFile: state.activeFile,
         theme: state.theme,
         darkDiagram: state.darkDiagram,
+        diagramStylePreset: state.diagramStylePreset,
+        customColorPresets: state.customColorPresets,
+        autoRender: state.autoRender,
       }),
       onRehydrateStorage: () => (state, error) => {
         if (error) {
@@ -187,3 +262,8 @@ export const useProjectStore = create<ProjectState>()(
     },
   ),
 )
+
+export function getAllColorPresets(): ColorPreset[] {
+  const custom = useProjectStore.getState().customColorPresets
+  return [...DEFAULT_COLOR_PRESETS, ...custom]
+}

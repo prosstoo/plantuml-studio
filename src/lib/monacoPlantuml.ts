@@ -1,10 +1,6 @@
 import type { Monaco } from '@monaco-editor/react'
 
-const PLANTUML_KEYWORDS = [
-  '@startuml',
-  '@enduml',
-  '@startmindmap',
-  '@endmindmap',
+const PLAIN_KEYWORDS = [
   'participant',
   'actor',
   'database',
@@ -16,7 +12,6 @@ const PLANTUML_KEYWORDS = [
   'state',
   'note',
   'box',
-  'end box',
   'alt',
   'else',
   'end',
@@ -36,10 +31,6 @@ const PLANTUML_KEYWORDS = [
   'of',
   'over',
   'as',
-  '!include',
-  '!define',
-  '!ifdef',
-  '!endif',
 ]
 
 let registered = false
@@ -53,12 +44,15 @@ export function registerPlantUmlLanguage(monaco: Monaco): void {
     monaco.languages.register({ id })
   }
 
+  // Monarch treats @ as state reference — never put @keyword inside regex alternations.
   monaco.languages.setMonarchTokensProvider(id, {
     tokenizer: {
       root: [
         [/'.*$/, 'comment'],
         [/".*"/, 'string'],
-        [new RegExp(`\\b(${PLANTUML_KEYWORDS.join('|')})\\b`), 'keyword'],
+        [/@[a-zA-Z][\w]*/, 'keyword'],
+        [/![a-zA-Z][\w]*/, 'keyword'],
+        [new RegExp(`\\b(${PLAIN_KEYWORDS.join('|')})\\b`), 'keyword'],
         [/[{}|<>o\-*#]+/, 'operator'],
         [/[a-zA-Z_][\w]*/, 'identifier'],
       ],

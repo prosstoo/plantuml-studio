@@ -1,8 +1,15 @@
+import { applyDiagramTheme, type DiagramStylePreset } from './diagramThemes'
+import { extractPlantUmlErrorFromSvg, isPlantUmlErrorSvg } from './plantumlErrorSvg'
+import { formatPlantUmlError } from './plantumlErrorFormat'
+
 type RenderOptions = {
   dark?: boolean
+  stylePreset?: DiagramStylePreset
 }
 
 let enginePromise: Promise<typeof import('@plantuml/core/plantuml.js')> | null = null
+
+const renderCache = new Map<string, string>()
 
 function loadEngine() {
   if (!enginePromise) {
@@ -19,13 +26,45 @@ function ensureVizLoaded(): void {
   }
 }
 
-export async function renderToSvg(
+function hashSource(source: string, options: RenderOptions): string {
+  const key = `${options.dark ? 'd' : 'l'}:${options.stylePreset ?? 'none'}:${source}`
+  let h = 0
+  for (let i = 0; i < key.length; i++) {
+    h = (Math.imul(31, h) + key.charCodeAt(i)) | 0
+  }
+  return h.toString(36)
+}
+
+export function prepareSource(
   source: string,
   options: RenderOptions = {},
+): string {
+  let result = source
+  if (options.stylePreset && options.stylePreset !== 'none') {
+    result = applyDiagramTheme(result, options.stylePreset)
+  }
+  return result
+}
+
+export function clearRenderCache(): void {
+  renderCache.clear()
+}
+
+export async function renderToSvg(
+  source: string,
+  options: RenderOptions & { alreadyPrepared?: boolean } = {},
 ): Promise<string> {
   ensureVizLoaded()
+
+  const prepared = options.alreadyPrepared
+    ? source
+    : prepareSource(source, options)
+  const cacheKey = hashSource(prepared, options)
+  const cached = renderCache.get(cacheKey)
+  if (cached) return cached
+
   const { renderToString } = await loadEngine()
-  const lines = source.split('\n')
+  const lines = prepared.split('\n')
 
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -37,6 +76,20 @@ export async function renderToSvg(
         lines,
         (svg: string) => {
           clearTimeout(timeout)
+          if (isPlantUmlErrorSvg(svg)) {
+            const detail = extractPlantUmlErrorFromSvg(svg)
+            reject(
+              new Error(
+                detail ? formatPlantUmlError(detail) : 'Ошибка синтаксиса PlantUML',
+              ),
+            )
+            return
+          }
+          renderCache.set(cacheKey, svg)
+          if (renderCache.size > 20) {
+            const first = renderCache.keys().next().value
+            if (first) renderCache.delete(first)
+          }
           resolve(svg)
         },
         (error: string) => {

@@ -8,7 +8,10 @@
     "build": "tsc -b && vite build",
     "build:pages": "tsc -b && cross-env GITHUB_PAGES=true vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "sync:plantuml": "node scripts/sync-plantuml.mjs",
+    "postinstall": "node scripts/sync-plantuml.mjs",
+    "update:plantuml": "npm install @plantuml/core@latest && node scripts/sync-plantuml.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
@@ -26,6 +29,7 @@
     "@vitejs/plugin-react": "^6.0.2",
     "cross-env": "^10.1.0",
     "oxlint": "^1.69.0",
+    "playwright": "^1.49.0",
     "tailwindcss": "^4.3.2",
     "typescript": "~6.0.2",
     "vite": "^8.1.0"

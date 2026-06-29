@@ -1,13 +1,25 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch'
 import { useProjectStore } from '../../store/projectStore'
-import { resolveIncludes } from '../../lib/includeResolver'
-import { ensurePlantUmlWrapper, renderToSvg } from '../../lib/plantumlRenderer'
+import { buildPreparedSource } from '../../lib/renderPipeline'
+import { renderToSvg } from '../../lib/plantumlRenderer'
+import { mapErrorToEditorLines } from '../../lib/parsePlantUmlError'
+import { formatPlantUmlError } from '../../lib/plantumlErrorFormat'
+import { CopyableError } from './CopyableError'
+import {
+  DIAGRAM_ZOOM_PROPS,
+  ZOOM_ANIMATION_EASING,
+  ZOOM_ANIMATION_MS,
+  ZOOM_BUTTON_STEP,
+} from '../../lib/diagramZoomConfig'
 
 export function DiagramPreview() {
   const files = useProjectStore((s) => s.files)
   const activeFile = useProjectStore((s) => s.activeFile)
   const darkDiagram = useProjectStore((s) => s.darkDiagram)
+  const diagramStylePreset = useProjectStore((s) => s.diagramStylePreset)
+  const autoRender = useProjectStore((s) => s.autoRender)
+  const renderVersion = useProjectStore((s) => s.renderVersion)
   const debounceMs = useProjectStore((s) => s.debounceMs)
   const svg = useProjectStore((s) => s.svg)
   const renderStatus = useProjectStore((s) => s.renderStatus)
@@ -15,6 +27,7 @@ export function DiagramPreview() {
   const renderTimeMs = useProjectStore((s) => s.renderTimeMs)
   const setSvg = useProjectStore((s) => s.setSvg)
   const setRenderStatus = useProjectStore((s) => s.setRenderStatus)
+  const triggerRender = useProjectStore((s) => s.triggerRender)
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const renderIdRef = useRef(0)
@@ -27,15 +40,45 @@ export function DiagramPreview() {
   const activeContent =
     files.find((f) => f.path === activeFile)?.content ?? ''
 
-  useEffect(() => {
-    if (timerRef.current) clearTimeout(timerRef.current)
-
+  const runRender = useCallback(async () => {
     const renderId = ++renderIdRef.current
+    setRenderStatus('loading')
+    const start = performance.now()
 
-    timerRef.current = setTimeout(async () => {
-      setRenderStatus('loading')
-      const start = performance.now()
+    try {
+      const filesMap = new Map<string, string>()
+      for (const f of files) {
+        filesMap.set(f.path, f.content)
+        const basename = f.path.split('/').pop()
+        if (basename) filesMap.set(basename, f.content)
+      }
 
+      const { prepared } = buildPreparedSource(
+        activeContent,
+        filesMap,
+        activeFile,
+        { stylePreset: diagramStylePreset },
+      )
+      const result = await renderToSvg(prepared, {
+        dark: darkDiagram,
+        stylePreset: diagramStylePreset,
+        alreadyPrepared: true,
+      })
+
+      if (renderId !== renderIdRef.current) return
+
+      const elapsed = Math.round(performance.now() - start)
+      setSvg(result)
+      setRenderStatus('success', null, elapsed, [])
+    } catch (err) {
+      if (renderId !== renderIdRef.current) return
+
+      const elapsed = Math.round(performance.now() - start)
+      const rawMessage =
+        err instanceof Error ? err.message : 'Неизвестная ошибка рендеринга'
+      const message = formatPlantUmlError(rawMessage)
+
+      let lineMap: ReturnType<typeof buildPreparedSource>['lineMap'] = []
       try {
         const filesMap = new Map<string, string>()
         for (const f of files) {
@@ -43,31 +86,56 @@ export function DiagramPreview() {
           const basename = f.path.split('/').pop()
           if (basename) filesMap.set(basename, f.content)
         }
-
-        const resolved = resolveIncludes(activeContent, filesMap)
-        const wrapped = ensurePlantUmlWrapper(resolved)
-        const result = await renderToSvg(wrapped, { dark: darkDiagram })
-
-        if (renderId !== renderIdRef.current) return
-
-        const elapsed = Math.round(performance.now() - start)
-        setSvg(result)
-        setRenderStatus('success', null, elapsed)
-      } catch (err) {
-        if (renderId !== renderIdRef.current) return
-
-        const elapsed = Math.round(performance.now() - start)
-        const message =
-          err instanceof Error ? err.message : 'Неизвестная ошибка рендеринга'
-        setSvg(null)
-        setRenderStatus('error', message, elapsed)
+        lineMap = buildPreparedSource(activeContent, filesMap, activeFile, {
+          stylePreset: diagramStylePreset,
+        }).lineMap
+      } catch {
+        lineMap = []
       }
-    }, debounceMs)
+
+      const errorLines = mapErrorToEditorLines(
+        rawMessage,
+        lineMap,
+        activeFile,
+        activeContent,
+        files.map((f) => f.path),
+      )
+
+      setSvg(null)
+      setRenderStatus('error', message, elapsed, errorLines)
+    }
+  }, [
+    activeContent,
+    activeFile,
+    files,
+    darkDiagram,
+    diagramStylePreset,
+    setSvg,
+    setRenderStatus,
+  ])
+
+  useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+
+    if (!autoRender && renderVersion === 0) return
+
+    const delay = autoRender ? debounceMs : 0
+
+    timerRef.current = setTimeout(runRender, delay)
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
     }
-  }, [activeContent, files, darkDiagram, debounceMs, setSvg, setRenderStatus])
+  }, [
+    activeContent,
+    files,
+    darkDiagram,
+    diagramStylePreset,
+    debounceMs,
+    autoRender,
+    renderVersion,
+    runRender,
+  ])
 
   const statusText = () => {
     if (renderStatus === 'loading') return 'Рендеринг…'
@@ -84,6 +152,14 @@ export function DiagramPreview() {
           Превью
         </span>
         <div className="ml-auto flex items-center gap-1">
+          <button
+            type="button"
+            className="preview-btn"
+            onClick={() => triggerRender()}
+            title="Обновить диаграмму"
+          >
+            ↻
+          </button>
           <button
             type="button"
             className="preview-btn"
@@ -120,29 +196,34 @@ export function DiagramPreview() {
           </div>
         )}
 
-        {renderStatus === 'error' && !svg && (
-          <div className="flex h-full items-center justify-center p-6">
-            <div className="max-w-md rounded-lg border border-[var(--error)] bg-[var(--bg-secondary)] p-4 text-sm text-[var(--error)]">
-              <p className="font-medium">Ошибка рендеринга</p>
-              <p className="mt-2 text-[var(--text-secondary)]">{renderError}</p>
-            </div>
+        {renderStatus === 'error' && !svg && renderError && (
+          <div className="flex h-full items-center justify-center overflow-auto p-6">
+            <CopyableError
+              title="Ошибка рендеринга"
+              text={renderError}
+              hint="Выделите текст или нажмите «Копировать», чтобы отправить ошибку в чат или баг-трекер."
+            />
           </div>
         )}
 
         {svg && (
           <TransformWrapper
             initialScale={1}
-            minScale={0.1}
-            maxScale={5}
-            centerOnInit
-            wheel={{ step: 0.1 }}
+            {...DIAGRAM_ZOOM_PROPS}
           >
             {({ zoomIn, zoomOut, resetTransform }) => {
-              zoomRef.current = { zoomIn, zoomOut, resetTransform }
+              zoomRef.current = {
+                zoomIn: () =>
+                  zoomIn(ZOOM_BUTTON_STEP, ZOOM_ANIMATION_MS, ZOOM_ANIMATION_EASING),
+                zoomOut: () =>
+                  zoomOut(ZOOM_BUTTON_STEP, ZOOM_ANIMATION_MS, ZOOM_ANIMATION_EASING),
+                resetTransform: () =>
+                  resetTransform(ZOOM_ANIMATION_MS, ZOOM_ANIMATION_EASING),
+              }
               return (
                 <TransformComponent
-                  wrapperClass="!w-full !h-full"
-                  contentClass="!w-full !h-full flex items-center justify-center p-8"
+                  wrapperClass="diagram-zoom-wrapper !w-full !h-full"
+                  contentClass="diagram-zoom-content !w-full !h-full flex items-center justify-center p-8"
                 >
                   <div
                     className="diagram-svg"
@@ -168,7 +249,23 @@ export function DiagramPreview() {
             : 'text-[var(--text-secondary)]'
         }`}
       >
-        {statusText()}
+        {renderStatus === 'error' && renderError ? (
+          <div className="flex items-start gap-2">
+            <span className="min-w-0 flex-1 truncate" title={renderError}>
+              Ошибка: {renderError.split('\n')[0]}
+            </span>
+            <button
+              type="button"
+              className="preview-btn shrink-0"
+              onClick={() => navigator.clipboard.writeText(renderError)}
+              title="Копировать полный текст ошибки"
+            >
+              Копировать
+            </button>
+          </div>
+        ) : (
+          statusText()
+        )}
       </div>
     </div>
   )

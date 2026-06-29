@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useProjectStore } from '../../store/projectStore'
 import { downloadPng, downloadSvg } from '../../lib/exportImage'
 import { normalizePath } from '../../lib/includeResolver'
+import { DIAGRAM_STYLE_OPTIONS } from '../../lib/diagramThemes'
+import type { DiagramStylePreset } from '../../lib/diagramThemes'
+
+const LOGO_LIGHT = `${import.meta.env.BASE_URL}logo-light.svg`
+const LOGO_DARK = `${import.meta.env.BASE_URL}logo-dark.svg`
 
 interface ExampleManifest {
   id: string
@@ -13,20 +18,28 @@ const EXAMPLES: ExampleManifest[] = [
   {
     id: 'blank',
     label: 'Пустой шаблон',
-    files: [{ path: 'main.puml', url: '/examples/blank.puml' }],
+    files: [{ path: 'main.puml', url: `${import.meta.env.BASE_URL}examples/blank.puml` }],
   },
   {
     id: 'sequence',
     label: 'Sequence — реестр заказов',
     files: [
-      { path: '_common.puml', url: '/examples/_common.puml' },
-      { path: 'sequence_phase.puml', url: '/examples/sequence_phase.puml' },
+      { path: '_common.puml', url: `${import.meta.env.BASE_URL}examples/_common.puml` },
+      { path: 'sequence_phase.puml', url: `${import.meta.env.BASE_URL}examples/sequence_phase.puml` },
+    ],
+  },
+  {
+    id: 'phase03',
+    label: 'Sequence — фаза 3 ССЗ',
+    files: [
+      { path: '_common.puml', url: `${import.meta.env.BASE_URL}examples/_common.puml` },
+      { path: 'fm_phase03_ssz.puml', url: `${import.meta.env.BASE_URL}examples/fm_phase03_ssz.puml` },
     ],
   },
   {
     id: 'state',
     label: 'State — статусная схема',
-    files: [{ path: 'state_diagram.puml', url: '/examples/state_diagram.puml' }],
+    files: [{ path: 'state_diagram.puml', url: `${import.meta.env.BASE_URL}examples/state_diagram.puml` }],
   },
 ]
 
@@ -95,10 +108,14 @@ async function readDroppedFiles(
 export function Toolbar() {
   const theme = useProjectStore((s) => s.theme)
   const darkDiagram = useProjectStore((s) => s.darkDiagram)
+  const diagramStylePreset = useProjectStore((s) => s.diagramStylePreset)
+  const autoRender = useProjectStore((s) => s.autoRender)
   const activeFile = useProjectStore((s) => s.activeFile)
   const svg = useProjectStore((s) => s.svg)
   const toggleTheme = useProjectStore((s) => s.toggleTheme)
   const setDarkDiagram = useProjectStore((s) => s.setDarkDiagram)
+  const setDiagramStylePreset = useProjectStore((s) => s.setDiagramStylePreset)
+  const setAutoRender = useProjectStore((s) => s.setAutoRender)
   const loadProject = useProjectStore((s) => s.loadProject)
   const clearProject = useProjectStore((s) => s.clearProject)
 
@@ -175,8 +192,15 @@ export function Toolbar() {
       onDrop={handleDrop}
     >
       <div className="flex items-center gap-2">
-        <span className="text-lg font-bold text-[var(--accent)]">◆</span>
+        <img
+          src={theme === 'dark' ? LOGO_DARK : LOGO_LIGHT}
+          alt="PlantUML Studio"
+          className="h-7 w-7"
+        />
         <h1 className="text-sm font-semibold">PlantUML Studio</h1>
+        <span className="text-[10px] text-[var(--text-secondary)]" title="Версия движка PlantUML">
+          v{__PLANTUML_VERSION__}
+        </span>
       </div>
 
       <div className="ml-4 flex items-center gap-2">
@@ -228,6 +252,31 @@ export function Toolbar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <select
+          className="input-field text-xs"
+          value={diagramStylePreset}
+          onChange={(e) =>
+            setDiagramStylePreset(e.target.value as DiagramStylePreset)
+          }
+          title="Стиль диаграммы"
+        >
+          {DIAGRAM_STYLE_OPTIONS.map((opt) => (
+            <option key={opt.id} value={opt.id}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+
+        <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+          <input
+            type="checkbox"
+            checked={autoRender}
+            onChange={(e) => setAutoRender(e.target.checked)}
+            className="accent-[var(--accent)]"
+          />
+          Авто
+        </label>
+
         <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
           <input
             type="checkbox"

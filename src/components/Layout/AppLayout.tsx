@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileTree } from '../FileTree/FileTree'
-import { SnippetPanel } from '../SnippetPanel/SnippetPanel'
+import { SidebarTools } from '../Sidebar/SidebarTools'
 import { CodeEditor } from '../Editor/CodeEditor'
 import { DiagramPreview } from '../Preview/DiagramPreview'
 
-const MIN_SIDEBAR = 160
-const MAX_SIDEBAR = 400
+const MIN_SIDEBAR = 200
+const MAX_SIDEBAR = 420
 const MIN_EDITOR = 280
 const MIN_PREVIEW = 300
 
 export function AppLayout() {
-  const [sidebarWidth, setSidebarWidth] = useState(220)
+  const [sidebarWidth, setSidebarWidth] = useState(240)
   const [editorWidthPercent, setEditorWidthPercent] = useState(50)
   const [resizingSidebar, setResizingSidebar] = useState(false)
   const [resizingSplit, setResizingSplit] = useState(false)
@@ -53,61 +53,56 @@ export function AppLayout() {
   }, [resizingSidebar, resizingSplit, sidebarWidth])
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex flex-1 overflow-hidden" ref={mainRef}>
-        {/* Sidebar: files + snippets */}
-        <aside
-          className="flex shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-secondary)]"
-          style={{ width: sidebarWidth }}
-        >
-          <div className="flex-1 overflow-hidden" style={{ minHeight: MIN_EDITOR }}>
-            <FileTree />
-          </div>
-          <div
-            className="border-t border-[var(--border)]"
-            style={{ height: '40%', minHeight: 180 }}
-          >
-            <SnippetPanel />
-          </div>
-        </aside>
-
-        <div
-          className="resize-handle"
-          onMouseDown={handleSidebarMouseDown}
-          role="separator"
-          aria-orientation="vertical"
-        />
-
-        {/* Editor */}
-        <div
-          className="flex shrink-0 flex-col overflow-hidden"
-          style={{
-            width: `calc((100% - ${sidebarWidth}px - 8px) * ${editorWidthPercent / 100})`,
-            minWidth: MIN_EDITOR,
-          }}
-        >
-          <div className="border-b border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)]">
-            Редактор
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <CodeEditor />
-          </div>
+    <div className="flex flex-1 overflow-hidden" ref={mainRef}>
+      <aside
+        className="flex shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-secondary)]"
+        style={{ width: sidebarWidth }}
+      >
+        <div className="flex-1 overflow-hidden" style={{ minHeight: MIN_EDITOR }}>
+          <FileTree />
         </div>
-
         <div
-          className="resize-handle"
-          onMouseDown={handleSplitMouseDown}
-          role="separator"
-          aria-orientation="vertical"
-        />
-
-        {/* Preview */}
-        <div
-          className="flex min-w-0 flex-1 flex-col overflow-hidden"
-          style={{ minWidth: MIN_PREVIEW }}
+          className="border-t border-[var(--border)]"
+          style={{ height: '42%', minHeight: 200 }}
         >
-          <DiagramPreview />
+          <SidebarTools />
         </div>
+      </aside>
+
+      <div
+        className="resize-handle"
+        onMouseDown={handleSidebarMouseDown}
+        role="separator"
+        aria-orientation="vertical"
+      />
+
+      <div
+        className="flex shrink-0 flex-col overflow-hidden"
+        style={{
+          width: `calc((100% - ${sidebarWidth}px - 8px) * ${editorWidthPercent / 100})`,
+          minWidth: MIN_EDITOR,
+        }}
+      >
+        <div className="border-b border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)]">
+          Редактор
+        </div>
+        <div className="flex-1 overflow-hidden">
+          <CodeEditor />
+        </div>
+      </div>
+
+      <div
+        className="resize-handle"
+        onMouseDown={handleSplitMouseDown}
+        role="separator"
+        aria-orientation="vertical"
+      />
+
+      <div
+        className="flex min-w-0 flex-1 flex-col overflow-hidden"
+        style={{ minWidth: MIN_PREVIEW }}
+      >
+        <DiagramPreview />
       </div>
     </div>
   )

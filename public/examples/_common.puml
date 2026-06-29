@@ -1,6 +1,15 @@
 ' Общие настройки набора диаграмм
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
 skinparam sequenceMessageAlign center
 skinparam responseMessageBelowArrow true
-skinparam BoxPadding 10
-skinparam ParticipantPadding 20
-skinparam shadowing false
+skinparam BoxPadding 12
+skinparam ParticipantPadding 24
+skinparam sequenceArrowThickness 2
+skinparam ParticipantBorderColor #64748b
+skinparam ActorBorderColor #64748b
+skinparam DatabaseBorderColor #64748b
+skinparam SequenceLifeLineBorderColor #94a3b8
+skinparam SequenceBoxBorderColor #64748b
