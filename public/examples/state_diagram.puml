@@ -1,0 +1,29 @@
+@startuml StateDiagram
+title Статусная схема смен недельного графика обточки
+
+state "Создано" as Created #lightblue
+state "Передано на исполнение" as Issued #lightgreen
+state "В работе" as InWork #yellow
+state "Завершено" as Completed #lightgray
+
+[*] --> Created : Добавление первой позиции\nв смену
+
+Created --> Issued : "Передать на исполнение"
+
+Issued --> Created : "Отменить"
+
+Issued --> InWork : Автоматически:\nвремя >= начала смены
+
+InWork --> Completed : Автоматически:\nвремя > окончания смены
+
+Completed --> [*]
+
+note right of Created
+  Редактирование доступно
+end note
+
+note right of Issued
+  Редактирование заблокировано
+end note
+
+@enduml

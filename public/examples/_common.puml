@@ -1,0 +1,6 @@
+' Общие настройки набора диаграмм
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam BoxPadding 10
+skinparam ParticipantPadding 20
+skinparam shadowing false

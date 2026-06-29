@@ -1,0 +1,46 @@
+@startuml FM_ESPC_Phase01_Short
+!include _common.puml
+
+title Фаза 1 · Реестр заказов (сокращённая)
+
+box "Внешние системы" #EEEEEE
+  participant "СУПР\n(ERP)" as SUPR
+  participant "ТЕХНСИ" as TEHNSI
+end box
+
+box "Роли" #E8F4E8
+  actor "ИТР цеха" as ITR
+end box
+
+box "ФМ «Задания и Заказы ЭСПЦ»" #E8EEF8
+  participant "Реестр заказов" as REG
+  database "БД реестра" as DB
+end box
+
+autonumber "<b>1."
+
+== Приём данных из СУПР ==
+
+SUPR -> REG : Событие: новый КЗ/ПЗ
+REG -> TEHNSI : Проверка номенклатуры
+TEHNSI --> REG : Результат
+
+alt Данные корректны
+  REG -> DB : Сохранение
+else Ошибка
+  REG -> REG : Журнал ошибок
+end
+
+== Просмотр реестра ==
+
+ITR -> REG : ЭФ «Коммерческие заказы»
+REG -> DB : Выборка
+DB --> REG : Список КЗ
+REG --> ITR : Отображение
+
+note over REG
+  Ключи: №КЗ + № позиции;
+  GUID ПЗ + № этапа
+end note
+
+@enduml
